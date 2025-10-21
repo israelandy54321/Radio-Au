@@ -1,63 +1,95 @@
+const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 const gTTS = require('google-tts-api');
 
-// Tu API Key de NewsAPI
+const app = express();
+const PORT = 3000;
 const API_KEY = '50767f6d04af41efa715d95664bd743a';
-const RADIO_FOLDER = '/home/israel-yanez/Documentos'; // Cambia esto a tu carpeta de RadioBOSS
+const RADIO_FOLDER = '/home/israel-yanez/Documentos';
 
-// Función para obtener noticias de fútbol de Ecuador
+// Middleware para servir archivos estáticos
+app.use(express.static('public'));
+
+// Configuración de multer (para recibir audios grabados)
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, RADIO_FOLDER),
+    filename: (req, file, cb) => {
+        const nombre = `grabacion_${Date.now()}.webm`;
+        cb(null, nombre);
+    },
+});
+const upload = multer({ storage });
+
+// Ruta para subir audio grabado
+app.post('/upload', upload.single('audio'), (req, res) => {
+    console.log('🎙️ Nuevo audio recibido:', req.file.path);
+    res.json({ mensaje: '✅ Audio guardado correctamente', archivo: req.file.filename });
+});
+
+// Obtener noticia
 async function obtenerNoticias() {
     try {
-        const url = `https://newsapi.org/v2/everything?q=futbol+ecuador&language=es&apiKey=${API_KEY}`;
+        const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=10&apiKey=${API_KEY}`;
         const response = await axios.get(url);
         const noticias = response.data.articles;
-        if (noticias.length === 0) {
-            console.log('No hay noticias disponibles.');
-            return null;
-        }
-        // Selecciona una noticia aleatoria
+        if (noticias.length === 0) return null;
+
         const noticia = noticias[Math.floor(Math.random() * noticias.length)];
-        return noticia.title + '. ' + (noticia.description || '');
+        let texto = `Atentos, noticia del día. ${noticia.title}. ${noticia.description || ''}. ${noticia.content || ''}`;
+        if (texto.length < 500)
+            texto += ' Esta noticia continúa desarrollándose. Estaremos atentos a más detalles sobre el fútbol ecuatoriano.';
+        return texto;
     } catch (error) {
-        console.error('Error al obtener noticias:', error.message);
+        console.error('❌ Error al obtener noticias:', error.message);
         return null;
     }
 }
 
-// Función para convertir texto a audio y guardar
+// Convertir texto a audio
 async function textoAAudio(texto, nombreArchivo) {
     try {
-        const url = gTTS.getAudioUrl(texto, {
-            lang: 'es',
-            slow: false,
-            host: 'https://translate.google.com',
-        });
+        const partes = texto.match(/.{1,200}(\s|$)/g);
+        const rutaArchivo = path.join(RADIO_FOLDER, nombreArchivo);
+        const chunks = [];
 
-        const audioResponse = await axios({
-            url,
-            method: 'GET',
-            responseType: 'arraybuffer',
-        });
+        for (const parte of partes) {
+            const url = gTTS.getAudioUrl(parte.trim(), {
+                lang: 'es',
+                slow: false,
+                host: 'https://translate.google.com',
+            });
 
-        fs.writeFileSync(path.join(RADIO_FOLDER, nombreArchivo), audioResponse.data);
-        console.log('Audio generado y guardado:', nombreArchivo);
+            const audioResponse = await axios({
+                url,
+                method: 'GET',
+                responseType: 'arraybuffer',
+            });
+
+            chunks.push(Buffer.from(audioResponse.data));
+        }
+
+        fs.writeFileSync(rutaArchivo, Buffer.concat(chunks));
+        console.log('✅ Audio generado y guardado:', rutaArchivo);
     } catch (error) {
-        console.error('Error al convertir texto a audio:', error.message);
+        console.error('❌ Error al convertir texto a audio:', error.message);
     }
 }
 
-// Función principal
-async function main() {
+// Generar noticia
+async function generarNoticiaAudio() {
+    console.log('🕒 Generando nueva noticia en audio...');
     const texto = await obtenerNoticias();
     if (!texto) return;
-
-    // Nombre del archivo aleatorio
     const nombreArchivo = `noticia_${Date.now()}.mp3`;
-
     await textoAAudio(texto, nombreArchivo);
 }
 
-// Ejecutar
-main();
+// Ejecutar cada minuto
+generarNoticiaAudio();
+setInterval(generarNoticiaAudio, 60000);
+
+// Iniciar servidor web
+app.listen(PORT, () => console.log(`🌐 Servidor web en http://localhost:${PORT}`));
