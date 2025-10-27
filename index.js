@@ -7,16 +7,22 @@ const gTTS = require('google-tts-api');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.API_KEY || '50767f6d04af41efa715d95664bd743a';
 
-const API_KEY = '50767f6d04af41efa715d95664bd743a';
-const RADIO_FOLDER = '/home/israel-yanez/Documentos';
+// 🗂️ Carpeta de destino (Render solo permite escribir en /tmp)
+const RADIO_FOLDER = process.env.RADIO_FOLDER || '/tmp';
 
-// 🕒 Configura aquí cada cuánto tiempo se actualizan las noticias (en milisegundos)
-const INTERVALO_MS = 1 * 60 * 1000; // cada 1 minuto (solo para pruebas)
-
+// 🕒 Intervalo de actualización (cada minuto para pruebas)
+const INTERVALO_MS = 1 * 60 * 1000;
 
 // Middleware para servir archivos estáticos
 app.use(express.static('public'));
+
+// Verifica que la carpeta exista
+if (!fs.existsSync(RADIO_FOLDER)) {
+  fs.mkdirSync(RADIO_FOLDER, { recursive: true });
+  console.log('📁 Carpeta creada:', RADIO_FOLDER);
+}
 
 // Configuración de multer (para subir audios grabados)
 const storage = multer.diskStorage({
@@ -40,7 +46,7 @@ async function obtenerNoticias() {
     const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=10&apiKey=${API_KEY}`;
     const response = await axios.get(url);
     const noticias = response.data.articles;
-    if (noticias.length === 0) return null;
+    if (!noticias || noticias.length === 0) return null;
 
     const noticia = noticias[Math.floor(Math.random() * noticias.length)];
     let texto = `Atención, noticia del día. ${noticia.title}. ${noticia.description || ''}. ${noticia.content || ''}`;
@@ -77,7 +83,7 @@ async function textoAAudio(texto, nombreArchivo) {
     }
 
     fs.writeFileSync(rutaArchivo, Buffer.concat(chunks));
-    console.log(`✅ Archivo actualizado: ${rutaArchivo}`);
+    console.log(`✅ Archivo generado: ${rutaArchivo}`);
   } catch (error) {
     console.error('❌ Error al convertir texto a audio:', error.message);
   }
@@ -102,5 +108,10 @@ async function generarNoticias() {
 generarNoticias();
 setInterval(generarNoticias, INTERVALO_MS);
 
+// 🩺 Ruta de salud (para Render)
+app.get('/saludz', (req, res) => {
+  res.send('OK');
+});
+
 // 🚀 Iniciar servidor
-app.listen(PORT, () => console.log(`🌐 Servidor web en http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🌐 Servidor en http://localhost:${PORT}`));
