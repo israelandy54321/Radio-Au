@@ -90,33 +90,25 @@ setInterval(generarNoticiaAudio, 60000);
 
 
 
-ya..
+// Codigo con las voces actuales . 
 
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const gTTS = require('google-tts-api');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.API_KEY || '50767f6d04af41efa715d95664bd743a';
+const PORT = 3000;
+const API_KEY = '50767f6d04af41efa715d95664bd743a'; // clave de noticias
+const ELEVEN_API_KEY = 'sk_8fc90b4f258fd8706bf2a527534511587a7da76ab684fa45'; // clave de ElevenLabs
+const RADIO_FOLDER = '/home/israel-yanez/Documentos';
 
-// 🗂️ Carpeta de destino (Render solo permite escribir en /tmp)
-const RADIO_FOLDER = process.env.RADIO_FOLDER || '/tmp';
-
-// 🕒 Intervalo de actualización (cada minuto para pruebas)
-const INTERVALO_MS = 1 * 60 * 1000;
+// 🕒 Intervalo de actualización (en milisegundos)
+const INTERVALO_MS = 1 * 60 * 1000; // cada 1 minuto
 
 // Middleware para servir archivos estáticos
 app.use(express.static('public'));
-
-// Verifica que la carpeta exista
-if (!fs.existsSync(RADIO_FOLDER)) {
-  fs.mkdirSync(RADIO_FOLDER, { recursive: true });
-  console.log('📁 Carpeta creada:', RADIO_FOLDER);
-}
 
 // Configuración de multer (para subir audios grabados)
 const storage = multer.diskStorage({
@@ -140,12 +132,12 @@ async function obtenerNoticias() {
     const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=10&apiKey=${API_KEY}`;
     const response = await axios.get(url);
     const noticias = response.data.articles;
-    if (!noticias || noticias.length === 0) return null;
+    if (noticias.length === 0) return null;
 
     const noticia = noticias[Math.floor(Math.random() * noticias.length)];
-    let texto = `Atención, noticia del día. ${noticia.title}. ${noticia.description || ''}. ${noticia.content || ''}`;
+    let texto = `La Noticia del momento en Ego Radio Digital ${noticia.title}. ${noticia.description || ''}. ${noticia.content || ''}`;
     if (texto.length < 500)
-      texto += ' Seguiremos informando sobre el fútbol ecuatoriano y europeo.';
+      texto += ' ';
     return texto;
   } catch (error) {
     console.error('❌ Error al obtener noticias:', error.message);
@@ -153,33 +145,48 @@ async function obtenerNoticias() {
   }
 }
 
-// 🔹 Convertir texto a audio
+// 🔹 Convertir texto a audio con ElevenLabs
 async function textoAAudio(texto, nombreArchivo) {
   try {
-    const partes = texto.match(/.{1,200}(\s|$)/g);
     const rutaArchivo = path.join(RADIO_FOLDER, nombreArchivo);
-    const chunks = [];
+
+    // Divide el texto si es muy largo (por seguridad)
+    const partes = texto.match(/.{1,900}(\s|$)/g);
+
+    const audioBuffers = [];
 
     for (const parte of partes) {
-      const url = gTTS.getAudioUrl(parte.trim(), {
-        lang: 'es',
-        slow: false,
-        host: 'https://translate.google.com',
-      });
+      console.log(`🎧 Generando audio con ElevenLabs...`);
+      const response = await axios.post(
+        'https://api.elevenlabs.io/v1/text-to-speech/EiNlNiXeDU1pqqOPrYMO', // tu voice_id
+        {
+          text: parte.trim(),
+          model_id: 'eleven_multilingual_v2', // modelo con soporte para español
+          voice_settings: {
+            stability: 0.65,          // ligeramente más firme
+            similarity_boost: 0.85,   // mantiene naturalidad
+            style: 0.3,               // tono más serio tipo noticiero
+          },
+        },
+        {
+          headers: {
+            'xi-api-key': ELEVEN_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          responseType: 'arraybuffer',
+        }
+      );
 
-      const audioResponse = await axios({
-        url,
-        method: 'GET',
-        responseType: 'arraybuffer',
-      });
-
-      chunks.push(Buffer.from(audioResponse.data));
+      audioBuffers.push(Buffer.from(response.data));
     }
 
-    fs.writeFileSync(rutaArchivo, Buffer.concat(chunks));
-    console.log(`✅ Archivo generado: ${rutaArchivo}`);
+    fs.writeFileSync(rutaArchivo, Buffer.concat(audioBuffers));
+    console.log(`✅ Archivo de audio creado: ${rutaArchivo}`);
   } catch (error) {
-    console.error('❌ Error al convertir texto a audio:', error.message);
+    console.error('❌ Error al convertir texto a audio (ElevenLabs):', error.message);
+    if (error.response) {
+      console.error('📩 Respuesta de la API:', error.response.status, error.response.data);
+    }
   }
 }
 
@@ -202,10 +209,8 @@ async function generarNoticias() {
 generarNoticias();
 setInterval(generarNoticias, INTERVALO_MS);
 
-// 🩺 Ruta de salud (para Render)
-app.get('/saludz', (req, res) => {
-  res.send('OK');
-});
+// Servidor web
+app.listen(PORT, () => console.log(`🚀 Servidor funcionando en http://localhost:${PORT}`));
 
-// 🚀 Iniciar servidor
-app.listen(PORT, () => console.log(`🌐 Servidor en http://localhost:${PORT}`));
+
+
