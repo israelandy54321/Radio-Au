@@ -8,7 +8,7 @@ const app = express();
 const PORT = 3000;
 const API_KEY = '50767f6d04af41efa715d95664bd743a'; // clave de noticias
 const ELEVEN_API_KEY = 'sk_8fc90b4f258fd8706bf2a527534511587a7da76ab684fa45'; // clave de ElevenLabs
-const RADIO_FOLDER = '/home/israel-yanez/Documentos';
+const RADIO_FOLDER = '/home/israel-yanez/Documentos'; 
 
 // 🕒 Intervalo de actualización (en milisegundos)
 const INTERVALO_MS = 1 * 60 * 1000; // cada 1 minuto
