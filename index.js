@@ -9,8 +9,9 @@ const app = express();
 const PORT = 3000;
 const API_KEY = '2f2742f976fb4d09a53b410c5f878d30'; // clave de noticias
 
-const RADIO_FOLDER = '/home/israel-yanez/Documentos'; 
-// 🕒 Intervalo de actualización (1 minuto) const RADIO_FOLDER = 'C:\\Users\\Oscar Portilla\\Desktop\\EGO RADIO\\NOTICIAS';
+const RADIO_FOLDER = '/home/israel-yanez/Documentos';
+// const RADIO_FOLDER = 'C:\\Users\\Oscar Portilla\\Desktop\\EGO RADIO\\NOTICIAS';
+
 const INTERVALO_MS = 30 * 60 * 1000; // 30 minutos
 
 // Servir archivos estáticos
@@ -33,64 +34,89 @@ app.post('/upload', upload.single('audio'), (req, res) => {
 });
 
 // -----------------------------------------------------------------------------------------
-// 🔹 LIMPIADOR Y REDACTOR AUTOMÁTICO (ELIMINA REPETICIONES)
+// 🔹 REDACTOR PERIODÍSTICO PROFESIONAL
 // -----------------------------------------------------------------------------------------
-function redactarNoticia(noticia) {
-  if (!noticia) return null;
+function mejorarRedaccionPeriodista(texto) {
+  if (!texto) return texto;
 
-  const titulo = noticia.title || "";
-  const descripcion = noticia.description || "";
-  const contenido = (noticia.content || "").split("[")[0];
-
-  // Unir todo
-  let texto = `${titulo}. ${descripcion}. ${contenido}`;
-
-  // ---- LIMPIEZA PROFESIONAL ----
-
-  // 1️⃣ Eliminar frases repetidas exactas
+  // Capitalizar cada frase
   texto = texto
     .split('. ')
-    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .map(frase => frase.charAt(0).toUpperCase() + frase.slice(1))
     .join('. ');
 
-  // 2️⃣ Eliminar frases que se incluyen unas dentro de otras
-  const frases = texto.split('. ').sort((a, b) => b.length - a.length);
-  let final = [];
+  // Reemplazos estilo periodista
+  let reemplazos = [
+    { de: /según reportes/i, a: "de acuerdo con información confirmada por diversas fuentes" },
+    { de: /informaron/i, a: "indicaron fuentes consultadas" },
+    { de: /se conoció que/i, a: "tras investigaciones se determinó que" },
+    { de: /por su parte/i, a: "mientras tanto" },
+    { de: /además/i, a: "adicionalmente" }
+  ];
 
-  frases.forEach((f) => {
-    if (!final.some((x) => x.includes(f) || f.includes(x))) {
-      final.push(f);
-    }
+  reemplazos.forEach(r => {
+    texto = texto.replace(r.de, r.a);
   });
 
-  texto = final.join('. ') + '.';
+  // Transiciones naturales
+  texto = texto.replace(/\. /g, ". Asimismo, ");
 
-  // 3️⃣ Corrección final
+  // Limpieza final
   texto = texto
+    .replace(/Asimismo, Asimismo,/g, "Asimismo,")
     .replace(/\s+/g, ' ')
-    .replace('..', '.')
     .trim();
 
   return texto;
 }
 
 // -----------------------------------------------------------------------------------------
-// 🔹 Función estilo "locutor profesional"
+// 🔹 LIMPIAR Y REDACTAR NOTICIA (SIN TÍTULO)
+// -----------------------------------------------------------------------------------------
+function redactarNoticia(noticia) {
+  if (!noticia) return null;
+
+  const descripcion = noticia.description || "";
+  const contenido = (noticia.content || "").split("[")[0];
+
+  // SOLO descripción + contenido (sin título)
+  let texto = `${descripcion}. ${contenido}`;
+
+  // eliminar repetidos exactos
+  texto = texto
+    .split('. ')
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .join('. ');
+
+  // mejorar redacción estilo reportero
+  texto = mejorarRedaccionPeriodista(texto);
+
+  return texto + ".";
+}
+
+// -----------------------------------------------------------------------------------------
+// 🔹 LOCUTOR PROFESIONAL
 // -----------------------------------------------------------------------------------------
 function versionLocutor(textoBase) {
   return (
-    "Atención oyentes: en información de última hora, " +
+    "Atención oyentes, aquí el informe especial de última hora. " +
     textoBase +
-    "  Manténgase en sintonía con Ego Radio Digital."
+    " Manténganse en sintonía con Ego Radio Digital para más información."
   );
 }
 
 // -----------------------------------------------------------------------------------------
-// 🔹 Obtener noticia aleatoria sin repetirse y mejor redactada
+// 🔹 OBTENER NOTICIA Y REESCRIBIRLA (SOLO FÚTBOL)
 // -----------------------------------------------------------------------------------------
 async function obtenerNoticias() {
   try {
-    const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=50&apiKey=${API_KEY}`;
+
+    // 🔥 SOLO NOTICIAS DE FÚTBOL
+    const url =
+      `https://newsapi.org/v2/everything?` +
+      `q=futbol+OR+liga+OR+champions+OR+fifa+OR+uefa+OR+conmebol+OR+seleccion+OR+club+OR+jugador` +
+      `&language=es&sortBy=publishedAt&pageSize=50&apiKey=${API_KEY}`;
+
     const response = await axios.get(url);
     const noticias = response.data.articles;
 
@@ -102,13 +128,10 @@ async function obtenerNoticias() {
       [noticias[i], noticias[j]] = [noticias[j], noticias[i]];
     }
 
-    // Tomar noticia aleatoria
     const noticia = noticias[0];
 
-    // Redacción profesional y limpia
-    const textoLargo = redactarNoticia(noticia);
-
-    const textoLocutor = versionLocutor(textoLargo);
+    const textoLimpio = redactarNoticia(noticia);
+    const textoLocutor = versionLocutor(textoLimpio);
 
     return `Flash informativo de Ego Radio Digital. ${textoLocutor}`;
 
@@ -119,7 +142,7 @@ async function obtenerNoticias() {
 }
 
 // -----------------------------------------------------------------------------------------
-// 🔹 Convertir texto a audio con gTTS
+// 🔹 TEXTO → AUDIO (gTTS)
 // -----------------------------------------------------------------------------------------
 async function textoAAudio(texto, nombreArchivo) {
   try {
@@ -128,7 +151,7 @@ async function textoAAudio(texto, nombreArchivo) {
     console.log('🎧 Generando audio con gTTS...');
 
     return new Promise((resolve, reject) => {
-      const speech = new gTTS(texto, 'es'); 
+      const speech = new gTTS(texto, 'es');
       speech.save(rutaArchivo, (err) => {
         if (err) {
           console.error('❌ Error en gTTS:', err);
@@ -146,7 +169,7 @@ async function textoAAudio(texto, nombreArchivo) {
 }
 
 // -----------------------------------------------------------------------------------------
-// 🔹 Generar dos noticias sin que se repitan
+// 🔹 GENERAR DOS NOTICIAS SIN REPETIR
 // -----------------------------------------------------------------------------------------
 async function generarNoticias() {
   console.log('🕒 Generando noticias...');
@@ -154,7 +177,6 @@ async function generarNoticias() {
   let texto1 = await obtenerNoticias();
   let texto2 = await obtenerNoticias();
 
-  // Si son iguales, reemplazar
   let intentos = 0;
   while (texto1 === texto2 && intentos < 5) {
     texto2 = await obtenerNoticias();
@@ -172,11 +194,9 @@ async function generarNoticias() {
 
 // -----------------------------------------------------------------------------------------
 
-// Ejecutar al iniciar y cada minuto
 generarNoticias();
 setInterval(generarNoticias, INTERVALO_MS);
 
-// Servidor
 app.listen(PORT, () =>
   console.log(`🚀 Servidor funcionando en http://localhost:${PORT}`)
 );
