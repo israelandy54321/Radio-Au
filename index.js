@@ -64,8 +64,6 @@ async function obtenerNoticias() {
     // Tomar la primera noticia mezclada
     const noticia = noticias[0];
 
-    console.log("📰 Noticia generada:", noticia.title);
-
     let textoLargo = `${noticia.title}. `;
 
     if (noticia.description) textoLargo += noticia.description + " ";
