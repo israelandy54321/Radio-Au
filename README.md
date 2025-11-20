@@ -1,116 +1,23 @@
-# Radio-Au
-
-Hola 12
-
-
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const gTTS = require('google-tts-api');
-
-const API_KEY = '50767f6d04af41efa715d95664bd743a';
-const RADIO_FOLDER = '/home/israel-yanez/Documentos';
-
-// Obtener noticia
-async function obtenerNoticias() {
-    try {
-       const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=10&apiKey=${API_KEY}`;
-
-        const response = await axios.get(url);
-        const noticias = response.data.articles;
-        if (noticias.length === 0) return null;
-
-        const noticia = noticias[Math.floor(Math.random() * noticias.length)];
-        let texto = `Atentos, noticia del día. ${noticia.title}. ${noticia.description || ''}. ${noticia.content || ''}`;
-        if (texto.length < 500)
-            texto += ' Esta noticia continúa desarrollándose. Estaremos atentos a más detalles sobre el fútbol ecuatoriano.';
-        return texto;
-    } catch (error) {
-        console.error('❌ Error al obtener noticias:', error.message);
-        return null;
-    }
-}
-
-// ✅ Nueva versión que soporta textos largos
-async function textoAAudio(texto, nombreArchivo) {
-    try {
-        const partes = texto.match(/.{1,200}(\s|$)/g);
-        const rutaArchivo = path.join(RADIO_FOLDER, nombreArchivo);
-        const chunks = [];
-
-        for (const parte of partes) {
-            const url = gTTS.getAudioUrl(parte.trim(), {
-                lang: 'es',
-                slow: false,
-                host: 'https://translate.google.com',
-            });
-
-            const audioResponse = await axios({
-                url,
-                method: 'GET',
-                responseType: 'arraybuffer',
-            });
-
-            chunks.push(Buffer.from(audioResponse.data));
-        }
-
-        fs.writeFileSync(rutaArchivo, Buffer.concat(chunks));
-        console.log('✅ Audio generado y guardado:', rutaArchivo);
-    } catch (error) {
-        console.error('❌ Error al convertir texto a audio:', error.message);
-    }
-}
-
-// Principal
-async function generarNoticiaAudio() {
-    console.log('🕒 Generando nueva noticia en audio...');
-    const texto = await obtenerNoticias();
-    if (!texto) return;
-    const nombreArchivo = `noticia_${Date.now()}.mp3`;
-    await textoAAudio(texto, nombreArchivo);
-}
-
-// Ejecutar y repetir cada minuto
-generarNoticiaAudio();
-setInterval(generarNoticiaAudio, 60000);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Codigo con las voces actuales . 
-
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const gTTS = require('gtts'); // << INTEGRADO
 
 const app = express();
 const PORT = 3000;
-const API_KEY = '50767f6d04af41efa715d95664bd743a'; // clave de noticias
-const ELEVEN_API_KEY = 'sk_8fc90b4f258fd8706bf2a527534511587a7da76ab684fa45'; // clave de ElevenLabs
-const RADIO_FOLDER = '/home/israel-yanez/Documentos';
+const API_KEY = '2f2742f976fb4d09a53b410c5f878d30'; // clave de noticias
 
-// 🕒 Intervalo de actualización (en milisegundos)
-const INTERVALO_MS = 1 * 60 * 1000; // cada 1 minuto
+const RADIO_FOLDER = 'C:\\Users\\Oscar Portilla\\Desktop\\EGO RADIO\\NOTICIAS';
 
-// Middleware para servir archivos estáticos
+// 🕒 Intervalo de actualización (1 minuto)
+const INTERVALO_MS = 1 * 60 * 1000;
+
+// Servir archivos estáticos
 app.use(express.static('public'));
 
-// Configuración de multer (para subir audios grabados)
+// MULTER (guardar audios grabados)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, RADIO_FOLDER),
   filename: (req, file, cb) => {
@@ -120,84 +27,143 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Ruta para subir audio grabado
+// Subir audio grabado
 app.post('/upload', upload.single('audio'), (req, res) => {
   console.log('🎙️ Nuevo audio recibido:', req.file.path);
   res.json({ mensaje: '✅ Audio guardado correctamente', archivo: req.file.filename });
 });
 
-// 🔹 Obtener noticia aleatoria
+// -----------------------------------------------------------------------------------------
+// 🔹 LIMPIADOR Y REDACTOR AUTOMÁTICO (ELIMINA REPETICIONES)
+// -----------------------------------------------------------------------------------------
+function redactarNoticia(noticia) {
+  if (!noticia) return null;
+
+  const titulo = noticia.title || "";
+  const descripcion = noticia.description || "";
+  const contenido = (noticia.content || "").split("[")[0];
+
+  // Unir todo
+  let texto = `${titulo}. ${descripcion}. ${contenido}`;
+
+  // ---- LIMPIEZA PROFESIONAL ----
+
+  // 1️⃣ Eliminar frases repetidas exactas
+  texto = texto
+    .split('. ')
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .join('. ');
+
+  // 2️⃣ Eliminar frases que se incluyen unas dentro de otras
+  const frases = texto.split('. ').sort((a, b) => b.length - a.length);
+  let final = [];
+
+  frases.forEach((f) => {
+    if (!final.some((x) => x.includes(f) || f.includes(x))) {
+      final.push(f);
+    }
+  });
+
+  texto = final.join('. ') + '.';
+
+  // 3️⃣ Corrección final
+  texto = texto
+    .replace(/\s+/g, ' ')
+    .replace('..', '.')
+    .trim();
+
+  return texto;
+}
+
+// -----------------------------------------------------------------------------------------
+// 🔹 Función estilo "locutor profesional"
+// -----------------------------------------------------------------------------------------
+function versionLocutor(textoBase) {
+  return (
+    "Atención oyentes: en información de última hora, " +
+    textoBase +
+    " Ampliamos esta noticia en nuestros próximos boletines. Manténgase en sintonía con Ego Radio Digital."
+  );
+}
+
+// -----------------------------------------------------------------------------------------
+// 🔹 Obtener noticia aleatoria sin repetirse y mejor redactada
+// -----------------------------------------------------------------------------------------
 async function obtenerNoticias() {
   try {
-    const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=10&apiKey=${API_KEY}`;
+    const url = `https://newsapi.org/v2/everything?q=futbol+(ecuador+OR+europa+OR+uefa+OR+champions)&language=es&sortBy=publishedAt&pageSize=50&apiKey=${API_KEY}`;
     const response = await axios.get(url);
     const noticias = response.data.articles;
-    if (noticias.length === 0) return null;
 
-    const noticia = noticias[Math.floor(Math.random() * noticias.length)];
-    let texto = `La Noticia del momento en Ego Radio Digital ${noticia.title}. ${noticia.description || ''}. ${noticia.content || ''}`;
-    if (texto.length < 500)
-      texto += ' ';
-    return texto;
+    if (!noticias.length) return null;
+
+    // Mezclar noticias
+    for (let i = noticias.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [noticias[i], noticias[j]] = [noticias[j], noticias[i]];
+    }
+
+    // Tomar noticia aleatoria
+    const noticia = noticias[0];
+
+    // Redacción profesional y limpia
+    const textoLargo = redactarNoticia(noticia);
+
+    const textoLocutor = versionLocutor(textoLargo);
+
+    return `Flash informativo de Ego Radio Digital. ${textoLocutor}`;
+
   } catch (error) {
     console.error('❌ Error al obtener noticias:', error.message);
     return null;
   }
 }
 
-// 🔹 Convertir texto a audio con ElevenLabs
+// -----------------------------------------------------------------------------------------
+// 🔹 Convertir texto a audio con gTTS
+// -----------------------------------------------------------------------------------------
 async function textoAAudio(texto, nombreArchivo) {
   try {
     const rutaArchivo = path.join(RADIO_FOLDER, nombreArchivo);
 
-    // Divide el texto si es muy largo (por seguridad)
-    const partes = texto.match(/.{1,900}(\s|$)/g);
+    console.log('🎧 Generando audio con gTTS...');
 
-    const audioBuffers = [];
-
-    for (const parte of partes) {
-      console.log(`🎧 Generando audio con ElevenLabs...`);
-      const response = await axios.post(
-        'https://api.elevenlabs.io/v1/text-to-speech/EiNlNiXeDU1pqqOPrYMO', // tu voice_id
-        {
-          text: parte.trim(),
-          model_id: 'eleven_multilingual_v2', // modelo con soporte para español
-          voice_settings: {
-            stability: 0.65,          // ligeramente más firme
-            similarity_boost: 0.85,   // mantiene naturalidad
-            style: 0.3,               // tono más serio tipo noticiero
-          },
-        },
-        {
-          headers: {
-            'xi-api-key': ELEVEN_API_KEY,
-            'Content-Type': 'application/json',
-          },
-          responseType: 'arraybuffer',
+    return new Promise((resolve, reject) => {
+      const speech = new gTTS(texto, 'es'); 
+      speech.save(rutaArchivo, (err) => {
+        if (err) {
+          console.error('❌ Error en gTTS:', err);
+          reject(err);
+        } else {
+          console.log(`✅ Audio creado: ${rutaArchivo}`);
+          resolve();
         }
-      );
+      });
+    });
 
-      audioBuffers.push(Buffer.from(response.data));
-    }
-
-    fs.writeFileSync(rutaArchivo, Buffer.concat(audioBuffers));
-    console.log(`✅ Archivo de audio creado: ${rutaArchivo}`);
   } catch (error) {
-    console.error('❌ Error al convertir texto a audio (ElevenLabs):', error.message);
-    if (error.response) {
-      console.error('📩 Respuesta de la API:', error.response.status, error.response.data);
-    }
+    console.error('❌ Error al convertir texto a audio:', error.message);
   }
 }
 
-// 🔹 Generar dos noticias
+// -----------------------------------------------------------------------------------------
+// 🔹 Generar dos noticias sin que se repitan
+// -----------------------------------------------------------------------------------------
 async function generarNoticias() {
   console.log('🕒 Generando noticias...');
-  const texto1 = await obtenerNoticias();
-  const texto2 = await obtenerNoticias();
+
+  let texto1 = await obtenerNoticias();
+  let texto2 = await obtenerNoticias();
+
+  // Si son iguales, reemplazar
+  let intentos = 0;
+  while (texto1 === texto2 && intentos < 5) {
+    texto2 = await obtenerNoticias();
+    intentos++;
+  }
 
   if (!texto1 || !texto2) {
-    console.log('⚠️ No se pudieron obtener noticias nuevas.');
+    console.log('⚠️ No se pudieron obtener noticias.');
     return;
   }
 
@@ -205,12 +171,13 @@ async function generarNoticias() {
   await textoAAudio(texto2, 'noticia2.mp3');
 }
 
-// 🔁 Generar al iniciar y cada cierto tiempo
+// -----------------------------------------------------------------------------------------
+
+// Ejecutar al iniciar y cada minuto
 generarNoticias();
 setInterval(generarNoticias, INTERVALO_MS);
 
-// Servidor web
-app.listen(PORT, () => console.log(`🚀 Servidor funcionando en http://localhost:${PORT}`));
-
-
-
+// Servidor
+app.listen(PORT, () =>
+  console.log(`🚀 Servidor funcionando en http://localhost:${PORT}`)
+);
